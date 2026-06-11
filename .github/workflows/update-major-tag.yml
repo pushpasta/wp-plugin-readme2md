@@ -1,0 +1,92 @@
+name: Update Major Version Tag
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to update the major version alias from (e.g. v1.2.3).'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-major-tag:
+    name: Update major version alias
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          # Full history and tags are required to resolve and update tags.
+          fetch-depth: 0
+          fetch-tags: true
+
+          # Do not persist GITHUB_TOKEN credentials.
+          # The tag push uses RELEASE_PAT instead.
+          persist-credentials: false
+
+      - name: Determine release tag
+        id: release_tag
+        run: |
+          # Use the published release tag when triggered by a release event.
+          # For manual runs, use the workflow input.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="${{ github.event.inputs.release_tag }}"
+          fi
+
+          echo "release_tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Extract major version
+        id: major_version
+        run: |
+          TAG="${{ steps.release_tag.outputs.release_tag }}"
+
+          # Expected format: vX.Y.Z
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unsupported release tag '$TAG'. Expected format: vX.Y.Z"
+            exit 1
+          fi
+
+          # Extract the major version number (e.g. 1 from v1.2.3).
+          MAJOR="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
+
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
+
+      - name: Verify PAT is available
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "RELEASE_PAT secret is not configured."
+            exit 1
+          fi
+
+      - name: Update major version alias tag
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          RELEASE_TAG="${{ steps.release_tag.outputs.release_tag }}"
+          MAJOR_TAG="v${{ steps.major_version.outputs.major }}"
+
+          echo "Updating major version alias '$MAJOR_TAG' to point to '$RELEASE_TAG'"
+
+          # Ensure local tags are up to date.
+          git fetch origin --prune --tags
+
+          # Resolve the commit referenced by the release tag.
+          TARGET_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+
+          # Move the major version tag to the release commit.
+          git tag -f "$MAJOR_TAG" "$TARGET_SHA"
+
+          # Force-push the updated alias tag.
+          git push \
+            "https://x-access-token:${RELEASE_PAT}@github.com/${{ github.repository }}.git" \
+            --force "$MAJOR_TAG"

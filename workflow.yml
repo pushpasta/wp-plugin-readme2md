@@ -1,0 +1,44 @@
+name: Generate GitHub README.md from WordPress Plugin readme.txt
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "readme.txt"
+      - "assets/*"
+
+  workflow_dispatch: # Allow manual runs
+
+permissions:
+  contents: write # Needed to commit changes back to the repository
+
+jobs:
+  generate-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Convert readme.txt to README.md
+        uses: pushpasta/wp-plugin-readme2md@v1
+
+      - name: Commit and Push Changes
+        run: |
+          # Configure Git identity
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+
+          # Stage generated file
+          git add README.md
+
+          # Exit if nothing changed
+          if git diff --cached --quiet; then
+            echo "No changes detected"
+            exit 0
+          fi
+
+          # Commit and push updated README
+          git commit -m "docs: regenerate README.md"
+          git push origin main

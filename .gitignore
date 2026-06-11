@@ -1,0 +1,26 @@
+# PHP / Composer
+vendor/
+composer.lock
+composer.phar
+phpunit.xml
+phpunit.xml.dist
+
+# GitHub Actions
+**/actions/cache
+**/actions/upload-artifact
+**/actions/download-artifact
+
+# IDEs / editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+*/.DS_Store
+*.log

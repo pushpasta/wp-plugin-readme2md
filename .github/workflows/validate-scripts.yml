@@ -1,0 +1,49 @@
+name: Validate README Converter
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/ReadmeConverter.php'
+      - 'scripts/ValidateReadmeConverter.php'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Check if converter script exists
+        run: |
+          if [ ! -f scripts/ReadmeConverter.php ]; then
+            echo "scripts/ReadmeConverter.php not found."
+            exit 1
+          fi
+
+      - name: Check if test for converter script exists
+        run: |
+          if [ ! -f scripts/ValidateReadmeConverter.php ]; then
+            echo "scripts/ValidateReadmeConverter.php not found."
+            exit 1
+          fi
+
+      - name: Validate syntax of converter script
+        run: php -l scripts/ReadmeConverter.php
+
+      - name: Validate syntax of test script
+        run: php -l scripts/ValidateReadmeConverter.php
+
+      - name: Run README converter with test input
+        run: |
+          output=$(php scripts/ValidateReadmeConverter.php)
+          if [ "$output" != "OK" ]; then
+            echo "Test failed. Expected 'OK' but got: $output"
+            exit 1
+          fi

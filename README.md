@@ -1,5 +1,9 @@
 # wp-plugin-readme2md
 
+<p align="center">
+  <img src=".github/assets/wp-plugin-readme2md.jpg" alt="wp-plugin-readme2md">
+</p>
+
 ![Version](https://img.shields.io/github/v/tag/pushpasta/wp-plugin-readme2md?label=version)
 ![License](https://img.shields.io/github/license/pushpasta/wp-plugin-readme2md)
 

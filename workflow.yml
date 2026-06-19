@@ -23,6 +23,9 @@ jobs:
 
       - name: Convert readme.txt to README.md
         uses: pushpasta/wp-plugin-readme2md@v1
+        with:
+          include: stars, forks, last-commit
+          badge-style: flat
 
       - name: Commit and Push Changes
         run: |

@@ -17,6 +17,9 @@ final class ReadmeConverter
         'License URI',
     ];
 
+    private const VALID_BADGE_TYPES = ['stars', 'forks', 'watchers', 'last-commit', 'downloads'];
+    private const VALID_BADGE_STYLES = ['flat', 'flat-square', 'plastic', 'for-the-badge', 'social'];
+
     private string $readmeTxt = 'readme.txt';
     private string $readmeMd = 'README.md';
     private string $assetsDir = 'assets';
@@ -30,6 +33,11 @@ final class ReadmeConverter
     private ?string $icon = null;
     private array $sections = [];
     private array $md = [];
+    private array $include = [];
+    private string $badgeStyle = 'flat';
+    private ?string $repoOwner = null;
+    private ?string $repoName = null;
+    private ?string $pluginSlug = null;
 
     public static function main(): int
     {
@@ -43,6 +51,12 @@ final class ReadmeConverter
             $this->ensureSourceExists();
             $this->loadContent();
             $this->parseHeader();
+            if ($this->include !== []) {
+                $this->resolveRepoInfo();
+                if (in_array('downloads', $this->include, true)) {
+                    $this->resolvePluginSlug();
+                }
+            }
             $this->collectAssets();
             $this->buildMarkdown();
             $this->writeReadme();
@@ -60,6 +74,19 @@ final class ReadmeConverter
         array_shift($args);
 
         foreach ($args as $index => $arg) {
+            if (str_starts_with($arg, '--include=')) {
+                $this->parseIncludeArg($arg);
+                continue;
+            }
+            if ($arg === '--include') {
+                throw new RuntimeException(
+                    "--include requires a value. Allowed: " . implode(', ', self::VALID_BADGE_TYPES)
+                );
+            }
+            if ($arg === '--badge-style' || str_starts_with($arg, '--badge-style=')) {
+                $this->badgeStyle = $this->parseBadgeStyleArg($arg);
+                continue;
+            }
             if (str_starts_with($arg, '--source=')) {
                 $this->readmeTxt = substr($arg, strlen('--source='));
                 continue;
@@ -77,6 +104,45 @@ final class ReadmeConverter
                 $this->readmeMd = $arg;
             }
         }
+    }
+
+    private function parseIncludeArg(string $arg): void
+    {
+        $value = substr($arg, strlen('--include='));
+        $types = array_map('trim', explode(',', $value));
+        $types = array_filter($types, static fn(string $t): bool => $t !== '');
+
+        if ($types === []) {
+            throw new RuntimeException(
+                "--include requires a value. Allowed: " . implode(', ', self::VALID_BADGE_TYPES)
+            );
+        }
+
+        foreach ($types as $type) {
+            if (!in_array($type, self::VALID_BADGE_TYPES, true)) {
+                throw new RuntimeException(
+                    "Invalid badge type: '{$type}'. Allowed: " . implode(', ', self::VALID_BADGE_TYPES)
+                );
+            }
+        }
+
+        $this->include = array_values($types);
+    }
+
+    private function parseBadgeStyleArg(string $arg): string
+    {
+        if ($arg === '--badge-style') {
+            throw new RuntimeException(
+                "--badge-style requires a value. Allowed: " . implode(', ', self::VALID_BADGE_STYLES)
+            );
+        }
+        $value = substr($arg, strpos($arg, '=') + 1);
+        if (!in_array($value, self::VALID_BADGE_STYLES, true)) {
+            throw new RuntimeException(
+                "Invalid badge style: '{$value}'. Allowed: " . implode(', ', self::VALID_BADGE_STYLES)
+            );
+        }
+        return $value;
     }
 
     private function ensureSourceExists(): void
@@ -191,6 +257,54 @@ final class ReadmeConverter
         }
     }
 
+    private function resolveRepoInfo(): void
+    {
+        $repository = getenv('GITHUB_REPOSITORY');
+        if ($repository !== false && strpos($repository, '/') !== false) {
+            [$this->repoOwner, $this->repoName] = explode('/', $repository, 2);
+            return;
+        }
+
+        $remote = $this->execCommand('git remote get-url origin');
+        if ($remote !== null) {
+            $remote = trim($remote);
+            if (preg_match('#[:/]([^/]+)/([^/]+?)(?:\.git)?$#', $remote, $matches)) {
+                $this->repoOwner = $matches[1];
+                $this->repoName = $matches[2];
+            }
+        }
+    }
+
+    private function resolvePluginSlug(): void
+    {
+        if (!empty($this->metadata['Contributors'])) {
+            $contributors = array_map('trim', explode(',', $this->metadata['Contributors']));
+            if ($contributors !== []) {
+                $this->pluginSlug = strtolower($contributors[0]);
+                return;
+            }
+        }
+
+        $slug = strtolower($this->pluginName);
+        $slug = preg_replace('/[^a-z0-9-]/', '-', $slug);
+        $slug = preg_replace('/-+/', '-', $slug);
+        $slug = trim($slug, '-');
+        if ($slug !== '') {
+            $this->pluginSlug = $slug;
+        }
+    }
+
+    private function execCommand(string $command): ?string
+    {
+        $output = [];
+        $exitCode = 0;
+        exec($command . ' 2>/dev/null', $output, $exitCode);
+        if ($exitCode !== 0 || $output === []) {
+            return null;
+        }
+        return $output[0];
+    }
+
     private function buildMarkdown(): void
     {
         $this->md = [];
@@ -240,6 +354,42 @@ final class ReadmeConverter
             $this->md[] = implode(' ', $badges);
             $this->md[] = '';
         }
+        if ($this->include !== []) {
+            $dynamicBadges = [];
+            $style = $this->badgeStyle;
+            foreach ($this->include as $type) {
+                $badge = $this->buildDynamicBadge($type, $style);
+                if ($badge !== null) {
+                    $dynamicBadges[] = $badge;
+                }
+            }
+            if ($dynamicBadges !== []) {
+                $this->md[] = implode(' ', $dynamicBadges);
+                $this->md[] = '';
+            }
+        }
+    }
+
+    private function buildDynamicBadge(string $type, string $style): ?string
+    {
+        return match ($type) {
+            'stars' => $this->repoOwner !== null
+                ? "![Stars](https://img.shields.io/github/stars/" . rawurlencode($this->repoOwner) . '/' . rawurlencode($this->repoName) . "?style={$style})"
+                : null,
+            'forks' => $this->repoOwner !== null
+                ? "![Forks](https://img.shields.io/github/forks/" . rawurlencode($this->repoOwner) . '/' . rawurlencode($this->repoName) . "?style={$style})"
+                : null,
+            'watchers' => $this->repoOwner !== null
+                ? "![Watchers](https://img.shields.io/github/watchers/" . rawurlencode($this->repoOwner) . '/' . rawurlencode($this->repoName) . "?style={$style})"
+                : null,
+            'last-commit' => $this->repoOwner !== null
+                ? "![Last Commit](https://img.shields.io/github/last-commit/" . rawurlencode($this->repoOwner) . '/' . rawurlencode($this->repoName) . "?style={$style})"
+                : null,
+            'downloads' => $this->pluginSlug !== null
+                ? "![Downloads](https://img.shields.io/wordpress/plugin/downloads/" . rawurlencode($this->pluginSlug) . "?color=orange&style={$style})"
+                : null,
+            default => null,
+        };
     }
 
     private function appendMetadataTable(): void

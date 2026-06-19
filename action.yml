@@ -1,6 +1,14 @@
 name: wp-plugin-readme2md
 description: Convert WordPress plugin readme.txt files to markdown format for better display on GitHub.
 
+inputs:
+  include:
+    description: 'Comma-separated list of dynamic badges to include (stars, forks, watchers, last-commit, downloads). Order controls badge placement.'
+    default: ''
+  badge-style:
+    description: 'Shield style for dynamic badges (flat, flat-square, plastic, for-the-badge, social)'
+    default: 'flat'
+
 branding:
   icon: "file-text"
   color: "blue"
@@ -17,4 +25,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-      run: php "$ACTION_PATH/scripts/ReadmeConverter.php"
+      run: |
+        php "$ACTION_PATH/scripts/ReadmeConverter.php" \
+          ${{ inputs.include != '' && format('--include={0}', inputs.include) || '' }} \
+          --badge-style=${{ inputs.badge-style }}

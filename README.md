@@ -27,6 +27,23 @@ This is useful for plugin developers who maintain a WordPress.org-style readme b
   uses: pushpasta/wp-plugin-readme2md@v1
 ```
 
+### Inputs
+
+| Input | Description | Default | Valid Values |
+|-------|-------------|---------|--------------|
+| `include` | Comma-separated list of dynamic badges to include. Order controls badge placement. | `''` | `stars`, `forks`, `watchers`, `last-commit`, `downloads` |
+| `badge-style` | Shield style for dynamic badges | `flat` | `flat`, `flat-square`, `plastic`, `for-the-badge`, `social` |
+
+Dynamic badges require repository context, resolved from `GITHUB_REPOSITORY` in GitHub Actions or from `git remote` locally.
+
+```yaml
+- name: Convert readme.txt to README.md
+  uses: pushpasta/wp-plugin-readme2md@v1
+  with:
+    include: stars, forks, last-commit
+    badge-style: flat
+```
+
 ## Example Workflow
 
 For a complete example, see [`workflow.yml`](workflow.yml).
